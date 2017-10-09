@@ -1,20 +1,13 @@
 import numpy as np
-import matplotlib.image as mpimg
 import matplotlib.pyplot as plt
 
-num_i = 500
-num_imgs = 1000
-very_big_number = 9999999
+num_i = 800
+num_imgs = 1600
 
 
-def integral_image(image):
-    from skimage import color
-    from skimage import io
-    import skimage.transform as trans
-    i = color.rgb2grey(io.imread(image))
+def integral_image(i):
     length = len(i)
     width = len(i[0])
-    iii = trans.integral_image(i)
 
     ii = np.zeros((width, length))
     s = np.zeros((width, length))
@@ -22,50 +15,22 @@ def integral_image(image):
         for y, pt in enumerate(row):
             s[x, y] = s[x, y - 1] + i[x, y]
             ii[x, y] = ii[x - 1, y] + s[x, y]
-    # assert (ii == iii).all()
-    return iii
+    return ii
 
 
 def integral_all_images():
-    iimages = []
-    labels = []
+    from skimage import io
+    images = []
+    label = []
     print("Calculating integral images.")
     for x in range(num_i):
-        iimages.append(integral_image("./data/faces/face" + str(x) + ".jpg"))
-        labels.append(1)
-        iimages.append(integral_image("./data/background/" + str(x) + ".jpg"))
-        labels.append(-1)
-    return iimages, labels
-
-
-def two_rects(x, y, dx, dy):
-    return [([x, y, int(x + dx / 2), y + dy, int(x + dx / 2), y, x + dx, y + dy], 0),
-            ([x, y, x + dx, int(y + dy / 2), x, int(y + dy / 2), x + dx, y + dy], 1)]
-
-
-def all_features(size, stride, size_step):
-    features = []
-    print("Populating feature table.")
-    for x in range(0, size, stride):
-        for y in range(0, size, stride):
-            for dx in range(2, size - x, size_step):
-                for dy in range(2, size - y, size_step):
-                    features.extend(two_rects(x, y, dx, dy))
-    return features
-
-
-iimages, labels = integral_all_images()
-feature_tbl = all_features(64, 4, 4)
-
-
-def compute_feature(i, f):
-    img = iimages[i]
-    ft = feature_tbl[f][0]
-    flag = feature_tbl[f][1]
-    if flag == 0:
-        return img[ft[6], ft[7]] + 2 * img[ft[4], ft[5]] - img[ft[6], ft[1]] - 2 * img[ft[2], ft[3]] - img[ft[0], ft[1]] + img[ft[0], ft[3]]
-    else:
-        return img[ft[6], ft[7]] + 2 * img[ft[4], ft[5]] - img[ft[4], ft[7]] - 2 * img[ft[2], ft[3]] - img[ft[0], ft[1]] + img[ft[0], ft[3]]
+        i = io.imread("./data/faces/face" + str(x) + ".jpg", as_grey=True)
+        images.append(integral_image(i))
+        label.append(1)
+        i = io.imread("./data/background/" + str(x) + ".jpg", as_grey=True)
+        images.append(integral_image(i))
+        label.append(-1)
+    return images, label
 
 
 def find_all_sigma(img):
@@ -77,43 +42,53 @@ def find_all_sigma(img):
     return sigma
 
 
-'''
-def weak_classifier(w, f, imgs):
-    sigma = sigmas[f]
-    num_img = len(imgs)
-    s_plus = np.zeros(num_img)
-    s_minus = np.zeros(num_img)
-    # print(sigma)
+def two_rects(x, y, dx, dy):
+    return [([x, y, int(x + dx / 2), y + dy, int(x + dx / 2), y, x + dx, y + dy], 0),
+            ([x, y, x + dx, int(y + dy / 2), x, int(y + dy / 2), x + dx, y + dy], 1)]
 
-    if labels[sigma[0]] == 1:
-        s_plus[0] = w[sigma[0]]
-        s_minus[0] = 0
-    else:
-        s_plus[0] = 0
-        s_minus[0] = w[sigma[0]]
 
-    for i in range(1, num_img):
-        if labels[sigma[i]] == 1:
-            s_plus[i] = s_plus[i - 1] + w[sigma[i]]
-            s_minus[i] = s_minus[i - 1]
-        else:
-            s_plus[i] = s_plus[i - 1]
-            s_minus[i] = s_minus[i - 1] + w[sigma[i]]
-    t_plus = s_plus[num_img - 1]
-    t_minus = s_minus[num_img - 1]
-    errors = np.minimum(np.add(s_plus, np.subtract(t_minus, s_minus)), np.add(s_minus, np.subtract(t_plus, s_plus)))
-    min_idx = np.argmin(errors)
-    theta = 0
-    if min_idx == num_img - 1:
-        theta = compute_feature(sigma[min_idx], f)
+def three_rects(x, y, dx, dy):
+    return [([x, y, int(x + dx / 3), y + dy, int(x + 2 * dx / 3), y, x + dx, y + dy], 2)]
+
+
+def four_rects(x, y, dx, dy):
+    return [([x, y, int(x + dx / 2), int(y + dy / 2), x + dx, y + dy, x, y + dy], 3)]
+
+
+def all_features(size, stride, size_step, triple_step):
+    features = []
+    print("Populating feature table.")
+    for x in range(0, size, stride):
+        for y in range(0, size, stride):
+            for dx in range(2, size - x, size_step):
+                for dy in range(2, size - y, size_step):
+                    features.extend(two_rects(x, y, dx, dy))
+                    features.extend(four_rects(x, y, dx, dy))
+
+    for x in range(0, size, stride):
+        for y in range(0, size, stride):
+            for dx in range(3, size - x, triple_step):
+                for dy in range(2, size - y, size_step):
+                    features.extend(three_rects(x, y, dx, dy))
+    return features
+
+
+iimages, labels = integral_all_images()
+feature_tbl = all_features(64, 4, 4, 3)
+
+
+def compute_feature(i, f):
+    img = iimages[i]
+    ft = feature_tbl[f][0]
+    flag = feature_tbl[f][1]
+    if flag == 0:
+        return img[ft[6], ft[7]] + 2 * img[ft[4], ft[5]] - img[ft[6], ft[1]] - 2 * img[ft[2], ft[3]] - img[ft[0], ft[1]] + img[ft[0], ft[3]]
+    elif flag == 1:
+        return img[ft[6], ft[7]] + 2 * img[ft[4], ft[5]] - img[ft[4], ft[7]] - 2 * img[ft[2], ft[3]] - img[ft[0], ft[1]] + img[ft[0], ft[3]]
+    elif flag == 2:
+        return img[ft[6], ft[7]] + 2 * img[ft[4], ft[5]] - img[ft[6], ft[5]] - 2 * img[ft[4], ft[3]] + 2 * img[ft[2], ft[3]] + img[ft[0], ft[1]] - 2 * img[ft[2], ft[1]] - img[ft[0], ft[3]]
     else:
-        theta = (compute_feature(sigma[min_idx + 1], f) - compute_feature(sigma[min_idx], f)) / 2
-    if s_plus[min_idx] + (t_minus - s_minus[min_idx]) > s_minus[min_idx] + (t_plus - s_plus[min_idx]):
-        polarity = 1
-    else:
-        polarity = -1
-    return [f, polarity, theta]
-'''
+        return img[ft[6], ft[7]] + img[ft[4], ft[5]] + 4 * img[ft[2], ft[3]] - 2 * img[ft[4], ft[3]] - 2 * img[ft[2], ft[5]] + img[ft[0], ft[1]] - 2 * img[ft[2], ft[1]] - 2 * img[ft[0], ft[3]] + img[ft[4], ft[1]]
 
 
 def best_learner(w, imgs, sigmas):
@@ -149,17 +124,15 @@ def best_learner(w, imgs, sigmas):
         if errors[min_idx] < best_f[0]:
             theta = 0
             if min_idx == num_img - 1:
-                theta = compute_feature(sigma[min_idx], f)
+                theta = compute_feature(imgs[sigma[min_idx]], f)
             else:
-                theta = (compute_feature(sigma[min_idx + 1], f) + compute_feature(sigma[min_idx], f)) / 2
+                theta = (compute_feature(imgs[sigma[min_idx + 1]], f) + compute_feature(imgs[sigma[min_idx]], f)) / 2
             if s_plus[min_idx] + (t_minus - s_minus[min_idx]) > s_minus[min_idx] + (t_plus - s_plus[min_idx]):
                 polarity = -1
             else:
                 polarity = 1
             best_f = [errors[min_idx], f, polarity, theta]
-
-    hypotheses = [compute_feature(i, best_f[1]) for i in range(num_img)]
-    #print(hypotheses)
+    print("BEST LEARNER: " + str(best_f[1]) + "\tWITH ERROR: " + str(best_f[0]))
     return best_f[1:], best_f[0]
 
 
@@ -173,48 +146,57 @@ def compute_strong(h, i):
     return [1 if sum1 - h[1] >= 0 else -1, sum1]
 
 
+def compute_cascade(cascade, i):
+    for classifier in cascade:
+        if compute_strong(classifier, i)[0] == -1:
+            return -1
+    return 1
+
+
+def compute_weak(h, i):
+    if np.sign(h[1] * (compute_feature(i, h[0]) - h[2])) >= 0:
+        return 1
+    else:
+        return -1
+
+
 def cascade_training():
     imgs = list(range(num_imgs))
     final_classifier = []
     non_faces = num_i
-    while non_faces > 0.03 * num_imgs:
+    faces = num_i
+    while non_faces > 0.01 * num_i:
         print("NEW CASCADE LEARNER")
         num_img = len(imgs)
-        sigmas = find_all_sigma(imgs)
         strong_hypothesis = [[], 0]
-        hypotheses = []
-        false_neg = 1
-        false_pos = 1
-        w = np.full(num_img, 1 / num_img)
-        while false_neg != 0 or false_pos > 0.3 * non_faces:
+        false_pos =  num_i
+        w = [1. / (2 * faces) if labels[i] == 1 else 1. / (2 * non_faces) for i in imgs]
+        sigmas = find_all_sigma(imgs)
+
+        while false_pos > 0.4 * non_faces:
             false_pos = 0
             false_neg = 0
             sum_w = np.sum(w)
             w /= sum_w
-            #print(w)
+
             print("Starting round of boosting")
             best_classifier, error = best_learner(w, imgs, sigmas)
             beta = error / (1 - error)
             alpha = np.log(1 / beta)
             strong_hypothesis[0].append([alpha, best_classifier[0], best_classifier[1], best_classifier[2]])
 
-            # print([compute_feature(i, 15000) for i in imgs])
-            # print(hypotheses)
-            theta = very_big_number
-            hypotheses = [compute_strong(strong_hypothesis, i) for i in imgs]
+            hypotheses = [compute_weak([best_classifier[0], best_classifier[1], best_classifier[2]], i) for i in imgs]
 
             for idx, i in enumerate(imgs):
-                if labels[i] == 1:
-                    theta = min(theta, hypotheses[idx][1])
-                    if hypotheses[idx][0] >= 0:
-                        w[idx] *= beta
-                else:
-                    # print("NEGATIVE: " + str(hypotheses[idx][1]))
-                    if hypotheses[idx][0] == -1:
-                        w[idx] *= beta
+                if labels[i] == 1 and hypotheses[idx] >= 0:
+                    w[idx] *= beta
+                elif labels[i] == -1 and hypotheses[idx] == -1:
+                    w[idx] *= beta
 
-            if theta == very_big_number:
+            theta = min([compute_strong(strong_hypothesis, i)[1] if labels[i] == 1 else 0 for i in imgs])
+            if theta > 0:
                 theta = 0
+
             strong_hypothesis[1] = theta
             hypotheses = [compute_strong(strong_hypothesis, i) for i in imgs]
             for idx, i in enumerate(imgs):
@@ -224,37 +206,8 @@ def cascade_training():
                     false_neg += 1
             assert false_neg == 0
 
-            # print(hypotheses)
+            print("False Positives: " + str(false_pos) + " out of " + str(len(imgs)))
 
-            print("AFTER THETA CHANGE: False negatives: " + str(false_neg) + "\t False Positives: " + str(false_pos) + " out of " + str(len(imgs)))
-            #print(imgs)
-            #END DEBUGGING
-            print(strong_hypothesis)
-
-            '''
-            #BOTTOM IS FOR TESTING
-            false_pos2 = 0
-            false_neg2 = 0
-            # print(strong_hypothesis)
-            hypotheses2 = [compute_strong(strong_hypothesis, i) for i in imgs]
-            for idx, i in enumerate(imgs):
-                if labels[i] == 1:
-                    if hypotheses2[idx][0] == 1:
-                        w[i] *= beta
-                    else:
-                        false_neg2 += 1
-                    theta = min(theta, hypotheses[idx][1])
-                    # print(theta)
-                else:
-                    if hypotheses2[idx][0] == -1:
-                        w[i] *= beta
-                    else:
-                        false_pos2 += 1
-            print("2: False negatives: " + str(false_neg2) + "\t False Positives: " + str(false_pos2))
-            #TESTING CODE ENDS HERE
-            '''
-
-        # RECALCULATE HYPOTHESES HERE
         final_classifier.append(strong_hypothesis)
         hypotheses = [compute_strong(strong_hypothesis, i) for i in imgs]
 
@@ -265,33 +218,99 @@ def cascade_training():
     return final_classifier
 
 
-def calc_integral(i):
-    length = len(i)
-    width = len(i[0])
-    ii = np.zeros((width, length))
-    s = np.zeros((width, length))
-    for x, row in enumerate(i):
-        for y, pt in enumerate(row):
-            s[x, y] = s[x, y - 1] + i[x, y]
-            ii[x, y] = ii[x - 1, y] + s[x, y]
-    return ii
+def detect_feature(img, f):
+    ft = feature_tbl[f][0]
+    flag = feature_tbl[f][1]
+    if flag == 0:
+        return img[ft[6], ft[7]] + 2 * img[ft[4], ft[5]] - img[ft[6], ft[1]] - 2 * img[ft[2], ft[3]] - img[ft[0], ft[1]] + img[ft[0], ft[3]]
+    else:
+        return img[ft[6], ft[7]] + 2 * img[ft[4], ft[5]] - img[ft[4], ft[7]] - 2 * img[ft[2], ft[3]] - img[ft[0], ft[1]] + img[ft[0], ft[3]]
 
 
-'''
-def detect_image(cascade):
-    from skimage import color
+def detect_strong(h, ii, gamma):
+    sum1 = 0
+    sum2 = 0
+    for classifier in h:
+        sum2 += classifier[0]
+        if np.sign(classifier[2] * (detect_feature(ii, classifier[1]) - classifier[3])) >= 0:
+            sum1 += classifier[0]
+        else:
+            sum1 -= classifier[0]
+    if sum1 >= gamma * sum2:
+        return [1, sum1]
+    else:
+        return [-1, 0]
+
+
+def test_cascade(cascade, img, gamma):
+    hyp = []
+    for classifier in cascade:
+        hyp = detect_strong(classifier, img, gamma)
+        if hyp[0] == -1:
+            return [-1, 0]
+    return [1, hyp[1]]
+
+
+def rect_overlaps(rects, x1, y1):
+    x2 = x1 + 64
+    y2 = y1 + 64
+    overlaps = 0
+    for rect in rects:
+        rx1 = rect[0]
+        ry1 = rect[1]
+        rx2 = rx1 + 64
+        ry2 = ry1 + 64
+        if rx1 <= x1 <= rx2 and (ry1 <= y1 <= ry2 or ry1 <= y2 <= ry2):
+            overlaps += 1
+        elif rx1 <= x2 <= rx2 and (ry1 <= y1 <= ry2 or ry1 <= y2 <= ry2):
+            overlaps += 1
+    return overlaps
+
+
+def detect_image(cascade, gamma, overlaps):
+    from matplotlib import patches
     from skimage import io
-    i = color.rgb2grey(io.imread("./data/class.jpg"))
+    i = io.imread("./data/class.jpg", as_grey=True)
     length = len(i)
     width = len(i[0])
-    for x in range(0, length, 64):
-        for y in range(0, width, 64):
-            img = calc_integral(i[x:x+64][y:y+64])
-            sum1 = 0
-            for classifier in cascade:
-                if np.sign(classifier[2] * (compute_feature(i, classifier[1]) - classifier[3])) >= 0:
-                    sum1 += classifier[0]
-                else:
-                    sum1 -= classifier[0]
-            np.sign(sum1 - h[1])
-'''
+    faces = []
+    vals = []
+
+    y = 0
+    x = 0
+    while y + 64 < width:
+        x = 0
+        while x + 64 < length:
+            img = integral_image(i[x:(x + 64), y:(y + 64)])
+            c = test_cascade(cascade, img, gamma)
+            if c[0] == 1:
+                vals.append([x, y, c[0], c[1]])
+            x += 2
+        y += 2
+    fig, ax = plt.subplots(1)
+    io.imshow(i)
+    vals = sorted(vals, key=lambda val_entry: val_entry[3])
+    rects = []
+    if overlaps == 1:
+        for val in vals:
+            if rect_overlaps(rects, val[0], val[1]) == 0:
+                faces.append(patches.Rectangle((val[1], val[0]), 64, 64, linewidth=2, edgecolor='r', facecolor='none'))
+                rects.append([val[0], val[1]])
+
+    else:
+        for val in vals:
+            faces.append(patches.Rectangle((val[1], val[0]), 64, 64, linewidth=2, edgecolor='r', facecolor='none'))
+
+    for face in faces:
+        ax.add_patch(face)
+
+    plt.show()
+    return vals
+
+
+# gamma is desired gamma value
+# overlaps == 1 means no overlap overlaps == 0 means show all
+def train_and_test(gamma, overlaps):
+    h = cascade_training()
+    h = [h[i][0] for i in range(len(h))]
+    detect_strong(h, gamma, overlaps)
